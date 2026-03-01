@@ -212,6 +212,8 @@ final class ZikrStore: ObservableObject {
 
 struct ZikrSetsManagerView: View {
     @ObservedObject var store: ZikrStore
+    @Binding var currentSetIndex: Int
+    @Binding var currentZikrIndex: Int
     @Environment(\.dismiss) private var dismiss
     @State private var showAddSet = false
 
@@ -226,16 +228,29 @@ struct ZikrSetsManagerView: View {
     var body: some View {
         NavigationStack {
             List {
-                ForEach(store.sets) { set in
-                    NavigationLink(value: set) {
-                        HStack {
-                            Text(set.title)
-                                .font(.headline)
+                ForEach(Array(store.sets.enumerated()), id: \.element.id) { index, set in
+                    HStack(spacing: 12) {
+                        Button {
+                            currentSetIndex = index
+                            currentZikrIndex = 0
+                            dismiss()
+                        } label: {
+                            HStack {
+                                Text(set.title)
+                                    .font(.headline)
+                                    .foregroundStyle(SujoodTheme.textPrimary)
+                                Spacer()
+                                Text("\(set.zikrs.count) zikrs")
+                                    .font(.caption)
+                                    .foregroundStyle(SujoodTheme.textSecondary)
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        NavigationLink(value: set) {
+                            Text("Edit")
+                                .font(.subheadline.weight(.medium))
                                 .foregroundStyle(SujoodTheme.textPrimary)
-                            Spacer()
-                            Text("\(set.zikrs.count) zikrs")
-                                .font(.caption)
-                                .foregroundStyle(SujoodTheme.textSecondary)
                         }
                     }
                     .listRowBackground(SujoodTheme.listRowBg)
@@ -678,12 +693,14 @@ struct ContentView: View {
         .onAppear { clampIndices() }
         .onChange(of: store.sets.count) { _, _ in clampIndices() }
         .onChange(of: currentSetIndex) { _, _ in
+            count = 0
             if currentSetIndex < sets.count, currentZikrIndex >= sets[currentSetIndex].zikrs.count {
                 currentZikrIndex = 0
             }
         }
+        .onChange(of: currentZikrIndex) { _, _ in count = 0 }
         .fullScreenCover(isPresented: $showSetsManager) {
-            ZikrSetsManagerView(store: store)
+            ZikrSetsManagerView(store: store, currentSetIndex: $currentSetIndex, currentZikrIndex: $currentZikrIndex)
         }
     }
 
