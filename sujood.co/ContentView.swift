@@ -14,6 +14,7 @@ private enum SujoodTheme {
     static let oceanTop = Color(red: 0x2a/255, green: 0x3b/255, blue: 0x5f/255)
     static let oceanMid = Color(red: 0x1e/255, green: 0x3a/255, blue: 0x5f/255)
     static let oceanBottom = Color(red: 0x0d/255, green: 0x28/255, blue: 0x47/255)
+    static let buttonBlue = Color(red: 0x5b/255, green: 0x9f/255, blue: 0xd8/255) // same as Tap button
     static let listRowBg = Color.white.opacity(0.12)
     static let textPrimary = Color.white
     static let textSecondary = Color.white.opacity(0.75)
@@ -216,6 +217,7 @@ struct ZikrSetsManagerView: View {
     @Binding var currentZikrIndex: Int
     @Environment(\.dismiss) private var dismiss
     @State private var showAddSet = false
+    @State private var setToEdit: ZikrSet?
 
     private var oceanGradient: LinearGradient {
         LinearGradient(
@@ -229,32 +231,44 @@ struct ZikrSetsManagerView: View {
         NavigationStack {
             List {
                 ForEach(Array(store.sets.enumerated()), id: \.element.id) { index, set in
-                    HStack(spacing: 12) {
+                    HStack(spacing: 14) {
                         Button {
                             currentSetIndex = index
                             currentZikrIndex = 0
                             dismiss()
                         } label: {
-                            HStack {
-                                Text(set.title)
-                                    .font(.headline)
-                                    .foregroundStyle(SujoodTheme.textPrimary)
-                                Spacer()
-                                Text("\(set.zikrs.count) zikrs")
-                                    .font(.caption)
+                            HStack(spacing: 12) {
+                                Text("\(set.zikrs.count)")
+                                    .font(.caption.weight(.medium))
                                     .foregroundStyle(SujoodTheme.textSecondary)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(Capsule().fill(Color.white.opacity(0.15)))
+                                Text(set.title)
+                                    .font(.title3.weight(.semibold))
+                                    .foregroundStyle(SujoodTheme.textPrimary)
+                                    .lineLimit(2)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                Spacer(minLength: 0)
                             }
+                            .frame(maxWidth: .infinity, alignment: .leading)
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
-                        NavigationLink(value: set) {
-                            Text("Edit")
-                                .font(.subheadline.weight(.medium))
-                                .foregroundStyle(SujoodTheme.textPrimary)
+                        Button {
+                            setToEdit = set
+                        } label: {
+                            Image(systemName: "pencil")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(SujoodTheme.oceanTop)
+                                .frame(width: 44, height: 44)
+                                .background(Capsule().fill(Color.white.opacity(0.95)))
                         }
+                        .buttonStyle(.plain)
                     }
+                    .listRowInsets(EdgeInsets(top: 10, leading: 20, bottom: 10, trailing: 12))
                     .listRowBackground(SujoodTheme.listRowBg)
-                    .listRowSeparatorTint(SujoodTheme.textSecondary.opacity(0.5))
+                    .listRowSeparatorTint(SujoodTheme.textSecondary.opacity(0.4))
                     .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                         Button(role: .destructive) { store.deleteSet(id: set.id) } label: {
                             Label("Delete", systemImage: "trash")
@@ -262,6 +276,7 @@ struct ZikrSetsManagerView: View {
                     }
                 }
             }
+            .listStyle(.insetGrouped)
             .scrollContentBackground(.hidden)
             .background(oceanGradient.ignoresSafeArea())
             .tint(SujoodTheme.textPrimary)
@@ -281,7 +296,7 @@ struct ZikrSetsManagerView: View {
                     }
                 }
             }
-            .navigationDestination(for: ZikrSet.self) { set in
+            .navigationDestination(item: $setToEdit) { set in
                 ZikrListInSetView(store: store, set: set)
             }
             .sheet(isPresented: $showAddSet) {
@@ -598,6 +613,62 @@ struct AddZikrSheet: View {
     }
 }
 
+// MARK: - Arabic azkaar count (per phrase, Arabic numerals)
+
+private func arabicNumeral(_ n: Int) -> String {
+    let digits = "٠١٢٣٤٥٦٧٨٩"
+    return String(n).map { c in
+        guard let i = Int(String(c)) else { return String(c) }
+        return String(digits[digits.index(digits.startIndex, offsetBy: i)])
+    }.joined()
+}
+
+private struct AzkaarCountView: View {
+    let countsPerPhrase: [String: Int]
+    let lastPulsedPhrase: String?
+    let lockedPhrase: String?
+    var onLockTap: (String) -> Void
+
+    private let columns = [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)]
+
+    var body: some View {
+        LazyVGrid(columns: columns, spacing: 10) {
+            ForEach(PredefinedArabic.all, id: \.transliteration) { option in
+                let n = countsPerPhrase[option.transliteration] ?? 0
+                let isPulsing = option.transliteration == lastPulsedPhrase
+                let isLocked = option.transliteration == lockedPhrase
+                HStack(spacing: isLocked ? 14 : 10) {
+                    Text(option.arabic)
+                        .font(.system(size: isLocked ? 20 : 15, weight: .medium, design: .serif))
+                        .foregroundStyle(SujoodTheme.textPrimary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.45)
+                    Text("\(n)")
+                        .font(.system(size: isLocked ? 24 : 18, weight: .semibold))
+                        .foregroundStyle(SujoodTheme.textPrimary.opacity(0.95))
+                        .monospacedDigit()
+                    Spacer(minLength: 0)
+                    Button {
+                        onLockTap(option.transliteration)
+                    } label: {
+                        Image(systemName: isLocked ? "lock.circle.fill" : "lock.circle")
+                            .font(.system(size: isLocked ? 28 : 22))
+                            .foregroundStyle(isLocked ? SujoodTheme.buttonBlue : SujoodTheme.textSecondary)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, isLocked ? 18 : 12)
+                .padding(.vertical, isLocked ? 12 : 8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Capsule().fill(isPulsing ? SujoodTheme.buttonBlue : Color.white.opacity(0.12)))
+                .scaleEffect(isPulsing ? 1.05 : (isLocked ? 1.12 : 1.0))
+                .animation(.easeOut(duration: 0.1), value: lastPulsedPhrase)
+            }
+        }
+        .padding(.horizontal, 24)
+    }
+}
+
 // MARK: - Wave Shape
 
 struct OceanWaveShape: Shape {
@@ -636,10 +707,15 @@ struct OceanWaveShape: Shape {
 struct ContentView: View {
     @StateObject private var store = ZikrStore()
     @State private var count = 0
+    @State private var countsPerPhrase: [String: Int] = [:] // transliteration -> count (which azkaar you've done more of)
     @State private var currentZikrIndex = 0
     @State private var currentSetIndex = 0
+    @State private var displayZikrs: [Zikr] = [] // shuffled order for current set
     @State private var arabicPulseScale: CGFloat = 1.0
     @State private var showSetsManager = false
+    @State private var lastPulsedPhrase: String? = nil // transliteration of card that just got +1 (for pulse)
+    @State private var selectZikrIdAfterSetChange: UUID? = nil // when set via lock, jump to this zikr after shuffle
+    @State private var lockedPhrase: String? = nil // transliteration of phrase that is locked (lock icon filled)
 
     private var sets: [ZikrSet] { store.sets }
     private var currentSet: ZikrSet? {
@@ -647,15 +723,50 @@ struct ContentView: View {
         return sets[currentSetIndex]
     }
     private var current: Zikr? {
-        guard let set = currentSet, currentZikrIndex < set.zikrs.count else { return nil }
-        return set.zikrs[currentZikrIndex]
+        guard currentZikrIndex < displayZikrs.count else { return nil }
+        return displayZikrs[currentZikrIndex]
     }
 
     private func onZikrTap() {
         count += 1
+        if let zikr = current {
+            countsPerPhrase[zikr.transliteration, default: 0] += 1
+            withAnimation(.easeOut(duration: 0.1)) { lastPulsedPhrase = zikr.transliteration }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                withAnimation(.easeOut(duration: 0.2)) { lastPulsedPhrase = nil }
+            }
+        }
         withAnimation(.easeOut(duration: 0.1)) { arabicPulseScale = 1.05 }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             withAnimation(.easeOut(duration: 0.2)) { arabicPulseScale = 1.0 }
+        }
+        // Cycle: when locked, only cycle through zikrs matching locked phrase across sets; else next in current set
+        if let phrase = lockedPhrase {
+            cycleToNextMatching(transliteration: phrase)
+        } else {
+            guard !displayZikrs.isEmpty else { return }
+            currentZikrIndex = (currentZikrIndex + 1) % displayZikrs.count
+        }
+    }
+
+    /// Move to the next zikr that has this transliteration (across all sets). Wraps to first at end.
+    private func cycleToNextMatching(transliteration: String) {
+        let list = indicesForPhrase(transliteration: transliteration)
+        guard !list.isEmpty else { return }
+        let currentId = current?.id
+        let currentListIndex = list.firstIndex { (si, zi) in
+            sets[si].zikrs[zi].id == currentId
+        } ?? 0
+        let next = (currentListIndex + 1) % list.count
+        let (nextSetIndex, nextZikrIndex) = list[next]
+        let targetZikr = sets[nextSetIndex].zikrs[nextZikrIndex]
+        if nextSetIndex == currentSetIndex {
+            if let idx = displayZikrs.firstIndex(where: { $0.id == targetZikr.id }) {
+                currentZikrIndex = idx
+            }
+        } else {
+            selectZikrIdAfterSetChange = targetZikr.id
+            currentSetIndex = nextSetIndex
         }
     }
 
@@ -685,20 +796,20 @@ struct ContentView: View {
             if sets.isEmpty {
                 emptyState
             } else if let set = currentSet, let zikr = current {
-                mainContent(set: set, zikr: zikr)
+                mainContent(set: set, displayZikrs: displayZikrs, zikr: zikr, countsPerPhrase: countsPerPhrase, lastPulsedPhrase: lastPulsedPhrase, lockedPhrase: lockedPhrase, onLockTap: onLockTap)
             } else {
                 emptySetState
             }
         }
-        .onAppear { clampIndices() }
+        .onAppear {
+            shuffleCurrentSetZikrs()
+            clampIndices()
+        }
         .onChange(of: store.sets.count) { _, _ in clampIndices() }
         .onChange(of: currentSetIndex) { _, _ in
-            count = 0
-            if currentSetIndex < sets.count, currentZikrIndex >= sets[currentSetIndex].zikrs.count {
-                currentZikrIndex = 0
-            }
+            shuffleCurrentSetZikrs()
+            clampIndices()
         }
-        .onChange(of: currentZikrIndex) { _, _ in count = 0 }
         .fullScreenCover(isPresented: $showSetsManager) {
             ZikrSetsManagerView(store: store, currentSetIndex: $currentSetIndex, currentZikrIndex: $currentZikrIndex)
         }
@@ -736,21 +847,74 @@ struct ContentView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
+    private func shuffleCurrentSetZikrs() {
+        guard let set = currentSet, !set.zikrs.isEmpty else {
+            displayZikrs = []
+            selectZikrIdAfterSetChange = nil
+            return
+        }
+        displayZikrs = set.zikrs.shuffled()
+        if let targetId = selectZikrIdAfterSetChange,
+           let idx = displayZikrs.firstIndex(where: { $0.id == targetId }) {
+            currentZikrIndex = idx
+            selectZikrIdAfterSetChange = nil
+        } else {
+            currentZikrIndex = 0
+        }
+    }
+
+    /// All (setIndex, zikrIndex) where that zikr has the given transliteration, in order across sets.
+    private func indicesForPhrase(transliteration: String) -> [(setIndex: Int, zikrIndex: Int)] {
+        var result: [(Int, Int)] = []
+        for (si, set) in sets.enumerated() {
+            for (zi, zikr) in set.zikrs.enumerated() {
+                if zikr.transliteration == transliteration {
+                    result.append((si, zi))
+                }
+            }
+        }
+        return result
+    }
+
+    /// Go to the first zikr that has this transliteration (search sets in order until one is found).
+    private func goToFirstMatching(transliteration: String) {
+        let list = indicesForPhrase(transliteration: transliteration)
+        guard let first = list.first else { return }
+        let targetZikr = sets[first.setIndex].zikrs[first.zikrIndex]
+        if first.setIndex == currentSetIndex {
+            if let idx = displayZikrs.firstIndex(where: { $0.id == targetZikr.id }) {
+                currentZikrIndex = idx
+            }
+        } else {
+            selectZikrIdAfterSetChange = targetZikr.id
+            currentSetIndex = first.setIndex
+        }
+    }
+
+    private func onLockTap(transliteration: String) {
+        if lockedPhrase == transliteration {
+            lockedPhrase = nil
+            return
+        }
+        lockedPhrase = transliteration
+        goToFirstMatching(transliteration: transliteration)
+    }
+
     private func clampIndices() {
         if currentSetIndex >= sets.count {
             currentSetIndex = max(0, sets.count - 1)
         }
-        if let set = currentSet, currentZikrIndex >= set.zikrs.count {
-            currentZikrIndex = max(0, set.zikrs.count - 1)
+        if currentZikrIndex >= displayZikrs.count {
+            currentZikrIndex = max(0, displayZikrs.count - 1)
         }
     }
 
-    private func mainContent(set: ZikrSet, zikr: Zikr) -> some View {
+    private func mainContent(set: ZikrSet, displayZikrs: [Zikr], zikr: Zikr, countsPerPhrase: [String: Int], lastPulsedPhrase: String?, lockedPhrase: String?, onLockTap: @escaping (String) -> Void) -> some View {
         VStack(spacing: 0) {
-            Spacer(minLength: 80)
+            Spacer(minLength: 40)
 
-            // Say / Set title / Arabic / Transliteration (pulses on tap)
-            VStack(spacing: 8) {
+                // Say / Set title / Arabic / Transliteration (pulses on tap)
+                VStack(spacing: 8) {
                     Text(zikr.arabic)
                         .font(.system(size: 36, weight: .semibold, design: .serif))
                         .multilineTextAlignment(.center)
@@ -796,13 +960,14 @@ struct ContentView: View {
                     //     .foregroundStyle(.white.opacity(0.8))
 
                     TabView(selection: $currentZikrIndex) {
-                        ForEach(Array(set.zikrs.enumerated()), id: \.offset) { index, z in
+                        ForEach(Array(displayZikrs.enumerated()), id: \.element.id) { index, z in
                             Text(z.reflection)
                                 .font(.body)
                                 .foregroundStyle(.white.opacity(0.9))
                                 .lineSpacing(4)
                                 .multilineTextAlignment(.leading)
                                 .frame(maxWidth: .infinity, alignment: .leading)
+                                .fixedSize(horizontal: false, vertical: true)
                                 .padding(.vertical, 8)
                                 .padding(.horizontal, 10) // room so scale doesn’t clip edges
                                 .scaleEffect(arabicPulseScale)
@@ -810,11 +975,11 @@ struct ContentView: View {
                         }
                     }
                     .tabViewStyle(.page(indexDisplayMode: .never))
-                    .frame(minHeight: 80)
+                    .frame(minHeight: 60)
 
                     // Page indicator dots
                     HStack(spacing: 6) {
-                        ForEach(0..<set.zikrs.count, id: \.self) { index in
+                        ForEach(0..<displayZikrs.count, id: \.self) { index in
                             Circle()
                                 .fill(index == currentZikrIndex ? Color.white : Color.white.opacity(0.35))
                                 .frame(width: 6, height: 6)
@@ -836,12 +1001,10 @@ struct ContentView: View {
 
                 Spacer(minLength: 24)
 
-                // Counter
-                Text("Count: \(count)")
-                    .font(.system(size: 32, weight: .medium))
-                    .foregroundStyle(.white)
+                // Arabic azkaar count (per phrase, Arabic numerals)
+                AzkaarCountView(countsPerPhrase: countsPerPhrase, lastPulsedPhrase: lastPulsedPhrase, lockedPhrase: lockedPhrase, onLockTap: onLockTap)
 
-                Spacer(minLength: 32)
+                Spacer(minLength: 40)
             }
             .zIndex(1)
     }
